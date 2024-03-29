@@ -1,19 +1,14 @@
-use anyhow::Error;
-use scribblekit::app::App;
-use winit::error::EventLoopError;
+use scribblekit::{
+    app::App,
+    render::{vulkan, Renderer},
+};
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     println!("Hello, world!");
-    let app = App::new("ScribbleKit", 720, 480);
+    let mut app = App::new("ScribbleKit", 720, 480);
 
-    let run_result = app.run();
-    if let Result::Err(err) = run_result {
-        match err {
-            EventLoopError::NotSupported(_) => todo!(),
-            EventLoopError::Os(_) => todo!(),
-            EventLoopError::AlreadyRunning => todo!(),
-            EventLoopError::RecreationAttempt => todo!(),
-            EventLoopError::ExitFailure(_) => todo!(),
-        }
-    }
+    let renderer = Box::new(vulkan::VulkanRenderer::create("ScribbleKit"));
+    app.set_renderer(renderer);
+
+    Ok(app.run()?)
 }

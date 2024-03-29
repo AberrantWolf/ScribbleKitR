@@ -1,16 +1,19 @@
-use std::ffi::CString;
-
 use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
-use winit::event::{Event, WindowEvent};
+use winit::event::{ElementState, Event, WindowEvent};
 use winit::event_loop::EventLoop;
-use winit::window::Window;
+use winit::keyboard::{KeyCode, PhysicalKey};
+
+use crate::render::{Renderer, VoidRenderer};
+
+trait RendererTrait: Renderer + std::fmt::Debug {}
 
 #[derive(Debug)]
 pub struct App {
     name: String,
     window: winit::window::Window,
     event_loop: EventLoop<()>,
+    renderer: Box<dyn Renderer>,
 }
 
 impl App {
@@ -28,7 +31,12 @@ impl App {
             name: name.to_owned(),
             window,
             event_loop,
+            renderer: Box::new(VoidRenderer::create(&name)),
         }
+    }
+
+    pub fn set_renderer(&mut self, renderer: Box<dyn Renderer>) {
+        self.renderer = renderer;
     }
 
     pub fn run(self) -> Result<(), EventLoopError> {
@@ -41,8 +49,19 @@ impl App {
                             window_target.exit();
                         }
                         WindowEvent::RedrawRequested => {
-                            // redrad
+                            // just render?
+                            self.renderer.render()
                         }
+                        WindowEvent::KeyboardInput {
+                            device_id: _,
+                            event,
+                            is_synthetic: _,
+                        } => match (event.physical_key, event.state) {
+                            (PhysicalKey::Code(KeyCode::Escape), ElementState::Pressed) => {
+                                window_target.exit()
+                            }
+                            _ => {}
+                        },
                         _ => {}
                     }
                 }
