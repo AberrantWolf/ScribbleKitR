@@ -14,6 +14,7 @@ use ash::extensions::khr::XlibSurface;
 #[cfg(target_os = "macos")]
 use ash::extensions::mvk::MacOSSurface;
 
+#[cfg(target_os = "windows")]
 fn required_extension_names() -> Vec<*const i8> {
     vec![
         Surface::name().as_ptr(),
@@ -23,6 +24,7 @@ fn required_extension_names() -> Vec<*const i8> {
 }
 
 pub struct VulkanRenderer {
+    _api_entry: ash::Entry,
     instance: ash::Instance,
 }
 
@@ -71,10 +73,21 @@ impl Renderer for VulkanRenderer {
                 .expect("Failed to create Vulkan instance")
         };
 
-        VulkanRenderer { instance }
+        VulkanRenderer {
+            _api_entry: entry,
+            instance,
+        }
     }
 
     fn render(&self) {
         // TODO
+    }
+}
+
+impl Drop for VulkanRenderer {
+    fn drop(&mut self) {
+        unsafe {
+            self.instance.destroy_instance(None);
+        }
     }
 }

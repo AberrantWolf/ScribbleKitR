@@ -53,6 +53,7 @@ impl App {
                             self.renderer.render()
                         }
                         WindowEvent::KeyboardInput {
+                            // TODO: make an input handler and pass this off to that
                             device_id: _,
                             event,
                             is_synthetic: _,
