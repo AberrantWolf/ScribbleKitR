@@ -121,6 +121,11 @@ pub struct VulkanRenderer {
 }
 
 impl VulkanRenderer {
+    /// .
+    ///
+    /// # Panics
+    ///
+    /// Panics if .
     fn check_validation_layer_support(entry: &ash::Entry) -> bool {
         let layer_properties = entry
             .enumerate_instance_layer_properties()
@@ -150,6 +155,11 @@ impl VulkanRenderer {
         true
     }
 
+    /// .
+    ///
+    /// # Panics
+    ///
+    /// Panics if .
     fn setup_debug_utils(
         entry: &ash::Entry,
         instance: &ash::Instance,
@@ -170,29 +180,13 @@ impl VulkanRenderer {
             (debug_utils_loader, utils_messenger)
         }
     }
-}
 
-impl Debug for VulkanRenderer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("VulkanRenderer")
-            // .field("instance", &self.instance.type_id())
-            .finish()
-    }
-}
-
-impl Renderer for VulkanRenderer {
-    fn create(name: &str) -> Self {
-        // Load the Vulkan API (dynamically) -- this needs to be kept alive while Vulkan is in use
-        let entry = unsafe { ash::Entry::load().unwrap() };
-
-        if VALIDATION_ON && !VulkanRenderer::check_validation_layer_support(&entry) {
-            panic!("Validation layers required but were not found.");
-        }
-
+    /// Create the app info struct required by Vulkan initialization.
+    fn init_app_info(name: &str) -> vk::ApplicationInfo {
         let app_name_c = CString::new(name).unwrap();
         let engine_name_c = CString::new("Scribble Vulkan Engine").unwrap();
 
-        let app_info = vk::ApplicationInfo {
+        vk::ApplicationInfo {
             s_type: vk::StructureType::APPLICATION_INFO,
             p_next: ptr::null(),
             p_application_name: app_name_c.as_ptr(),
@@ -200,8 +194,11 @@ impl Renderer for VulkanRenderer {
             p_engine_name: engine_name_c.as_ptr(),
             engine_version: 0u32,
             api_version: vk::API_VERSION_1_3,
-        };
+        }
+    }
 
+    /// Create the InstanceCreateInfo struct required by Vulkan initialization.
+    fn init_create_info(app_info: vk::ApplicationInfo) -> vk::InstanceCreateInfo {
         let extension_names = required_extension_names();
 
         let debug_utils_create_info = populate_debug_messenger_create_info();
@@ -233,7 +230,7 @@ impl Renderer for VulkanRenderer {
             0
         };
 
-        let create_info = vk::InstanceCreateInfo {
+        vk::InstanceCreateInfo {
             s_type: vk::StructureType::INSTANCE_CREATE_INFO,
             p_next,
             flags: vk::InstanceCreateFlags::empty(),
@@ -242,7 +239,32 @@ impl Renderer for VulkanRenderer {
             pp_enabled_layer_names,
             enabled_extension_count: extension_names.len() as u32,
             pp_enabled_extension_names: extension_names.as_ptr(),
-        };
+        }
+    }
+}
+
+impl Debug for VulkanRenderer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VulkanRenderer")
+            // .field("instance", &self.instance.type_id())
+            .finish()
+    }
+}
+
+impl Renderer for VulkanRenderer {
+    fn create(name: &str) -> Self {
+        // Load the Vulkan API (dynamically) -- this needs to be kept alive while Vulkan is in use
+        let entry = unsafe { ash::Entry::load().unwrap() };
+
+        // If we need validation layers and can't load them, screw it, give up I guess... (for now)
+        // TODO: Maybe don't panic...?
+        if VALIDATION_ON && !VulkanRenderer::check_validation_layer_support(&entry) {
+            panic!("Validation layers required but were not found.");
+        }
+
+        // Initialize info structs used to create the instance
+        let app_info = VulkanRenderer::init_app_info(name);
+        let create_info = VulkanRenderer::init_create_info(app_info);
 
         // Create the Vulkan insance we're going to use
         let instance = unsafe {
@@ -255,6 +277,7 @@ impl Renderer for VulkanRenderer {
         let (debug_utils_loader, debug_messenger) =
             VulkanRenderer::setup_debug_utils(&entry, &instance);
 
+        // Here we go, constructing the usable(?) renderer struct
         VulkanRenderer {
             _api_entry: entry,
             instance,

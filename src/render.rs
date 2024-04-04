@@ -1,9 +1,14 @@
 pub mod vulkan;
 
 pub trait Renderer {
+    /// Create an instance of the renderer using the given name.
     fn create(name: &str) -> Self
     where
         Self: Sized;
+
+    /// Execute the rendering process.
+    /// NOTE: This is likely to get split into separate stages, especially as I figure out how to
+    /// execute command buffer builds asynchronously and such.
     fn render(&self);
 }
 
@@ -16,7 +21,6 @@ impl std::fmt::Debug for dyn Renderer {
 }
 
 pub struct VoidRenderer {}
-
 impl Renderer for VoidRenderer {
     fn create(_name: &str) -> Self {
         VoidRenderer {}

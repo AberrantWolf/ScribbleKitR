@@ -17,6 +17,11 @@ pub struct App {
 }
 
 impl App {
+    /// Creates a new [`App`] with a void/passthrough renderer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the window or event loop cannot be created for some reason.
     pub fn new(name: &str, width: u32, height: u32) -> Self {
         let event_loop = EventLoop::new().expect("Unable to create event loop");
         event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
