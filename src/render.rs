@@ -1,8 +1,10 @@
+use winit::raw_window_handle::RawDisplayHandle;
+
 pub mod vulkan;
 
 pub trait Renderer {
     /// Create an instance of the renderer using the given name.
-    fn create(name: &str) -> Self
+    fn create(name: &str, display_handle: &RawDisplayHandle) -> Self
     where
         Self: Sized;
 
@@ -21,8 +23,15 @@ impl std::fmt::Debug for dyn Renderer {
 }
 
 pub struct VoidRenderer {}
+
+impl VoidRenderer {
+    pub fn empty() -> Self {
+        Self {}
+    }
+}
+
 impl Renderer for VoidRenderer {
-    fn create(_name: &str) -> Self {
+    fn create(_name: &str, _: &RawDisplayHandle) -> Self {
         VoidRenderer {}
     }
 

@@ -3,6 +3,7 @@ use winit::error::EventLoopError;
 use winit::event::{ElementState, Event, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::raw_window_handle::{HasDisplayHandle, RawDisplayHandle};
 
 use crate::render::{Renderer, VoidRenderer};
 
@@ -17,7 +18,8 @@ pub struct App {
 }
 
 impl App {
-    /// Creates a new [`App`] with a void/passthrough renderer.
+    /// Creates a new [`App`] with a void/passthrough renderer. This uses winit to handle OS display and input,
+    /// so unless you're on an unsupported system or trying to run headless, this shouldn't panic...
     ///
     /// # Panics
     ///
@@ -36,8 +38,17 @@ impl App {
             name: name.to_owned(),
             window,
             event_loop,
-            renderer: Box::new(VoidRenderer::create(&name)),
+            renderer: Box::new(VoidRenderer::empty()),
         }
+    }
+
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn get_display_handle(&self) -> anyhow::Result<RawDisplayHandle> {
+        let handle = self.window.display_handle()?;
+        Ok(handle.into())
     }
 
     pub fn set_renderer(&mut self, renderer: Box<dyn Renderer>) {

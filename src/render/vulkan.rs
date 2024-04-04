@@ -1,122 +1,47 @@
-use std::ffi::CStr;
+use std::borrow::Cow;
+use std::ffi::{self, CString};
 use std::fmt::Debug;
-use std::os::raw::{c_char, c_void};
-use std::{ffi::CString, ptr};
+use std::os::raw::c_char;
 
-use ash::extensions::ext::DebugUtils;
-use ash::extensions::khr::Surface;
+use ash::ext::debug_utils;
 use ash::vk;
+use winit::raw_window_handle::RawDisplayHandle;
 
 use crate::render::Renderer;
 
-// Windows-specific setup
-#[cfg(target_os = "windows")]
-use ash::extensions::khr::Win32Surface;
-#[cfg(target_os = "windows")]
-fn required_extension_names() -> Vec<*const i8> {
-    vec![
-        Surface::name().as_ptr(),
-        Win32Surface::name().as_ptr(),
-        DebugUtils::name().as_ptr(),
-    ]
-}
-
-// Mac-specific setup
-#[cfg(target_os = "macos")]
-use ash::extensions::mvk::MacOSSurface;
-#[cfg(target_os = "macos")]
-pub fn required_extension_names() -> Vec<*const i8> {
-    vec![
-        Surface::name().as_ptr(),
-        MacOSSurface::name().as_ptr(),
-        DebugUtils::name().as_ptr(),
-    ]
-}
-
-// Linux-specific setup
-#[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
-use ash::extensions::khr::XlibSurface;
-#[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
-pub fn required_extension_names() -> Vec<*const i8> {
-    vec![
-        Surface::name().as_ptr(),
-        XlibSurface::name().as_ptr(),
-        DebugUtils::name().as_ptr(),
-    ]
-}
-
-fn vk_to_str(raw_string_array: &[c_char]) -> String {
-    let raw_string = unsafe {
-        let pointer = raw_string_array.as_ptr();
-        CStr::from_ptr(pointer)
-    };
-
-    raw_string
-        .to_str()
-        .expect("Failed to convert vulkan raw string.")
-        .to_owned()
-}
-
-#[cfg(feature = "validation")]
-const VALIDATION_ON: bool = true;
-
-#[cfg(not(feature = "validation"))]
-const VALIDATION_ON: bool = true;
-
-#[cfg(feature = "validation")]
-const VALIDATION_LAYERS: [&'static str; 1] = ["VK_LAYER_KHRONOS_validation"];
-
-#[cfg(not(feature = "validation"))]
-const VALIDATION_LAYERS: [&'static str; 0] = [];
-
 // Borrowed from https://github.com/unknownue/vulkan-tutorial-rust/blob/master/src/tutorials/02_validation_layers.rs
-unsafe extern "system" fn vulkan_debug_utils_callback(
+unsafe extern "system" fn vulkan_debug_callback(
     message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
     message_type: vk::DebugUtilsMessageTypeFlagsEXT,
-    p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
-    _p_user_data: *mut c_void,
+    p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT<'_>,
+    _user_data: *mut std::os::raw::c_void,
 ) -> vk::Bool32 {
-    let severity = match message_severity {
-        vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE => "[Verbose]",
-        vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => "[Warning]",
-        vk::DebugUtilsMessageSeverityFlagsEXT::ERROR => "[Error]",
-        vk::DebugUtilsMessageSeverityFlagsEXT::INFO => "[Info]",
-        _ => "[Unknown]",
+    let callback_data = *p_callback_data;
+    let message_id_number = callback_data.message_id_number;
+
+    let message_id_name = if callback_data.p_message_id_name.is_null() {
+        Cow::from("")
+    } else {
+        ffi::CStr::from_ptr(callback_data.p_message_id_name).to_string_lossy()
     };
-    let types = match message_type {
-        vk::DebugUtilsMessageTypeFlagsEXT::GENERAL => "[General]",
-        vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE => "[Performance]",
-        vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION => "[Validation]",
-        _ => "[Unknown]",
+
+    let message = if callback_data.p_message.is_null() {
+        Cow::from("")
+    } else {
+        ffi::CStr::from_ptr(callback_data.p_message).to_string_lossy()
     };
-    let message = CStr::from_ptr((*p_callback_data).p_message);
-    println!("[Debug]{}{}{:?}", severity, types, message);
+
+    println!(
+        "{message_severity:?}:\n{message_type:?} [{message_id_name} ({message_id_number})] : {message}\n",
+    );
 
     vk::FALSE
-}
-
-// Borrowed from https://github.com/unknownue/vulkan-tutorial-rust/blob/master/src/tutorials/02_validation_layers.rs
-fn populate_debug_messenger_create_info() -> vk::DebugUtilsMessengerCreateInfoEXT {
-    vk::DebugUtilsMessengerCreateInfoEXT {
-        s_type: vk::StructureType::DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-        p_next: ptr::null(),
-        flags: vk::DebugUtilsMessengerCreateFlagsEXT::empty(),
-        message_severity: vk::DebugUtilsMessageSeverityFlagsEXT::WARNING |
-            // vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE |
-            // vk::DebugUtilsMessageSeverityFlagsEXT::INFO |
-            vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
-        message_type: vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
-            | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE
-            | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION,
-        pfn_user_callback: Some(vulkan_debug_utils_callback),
-        p_user_data: ptr::null_mut(),
-    }
 }
 
 pub struct VulkanRenderer {
     _api_entry: ash::Entry,
     instance: ash::Instance,
-    debug_utils_loader: ash::extensions::ext::DebugUtils,
+    debug_utils_loader: ash::ext::debug_utils::Instance,
     debug_messenger: vk::DebugUtilsMessengerEXT,
 }
 
@@ -126,120 +51,49 @@ impl VulkanRenderer {
     /// # Panics
     ///
     /// Panics if .
-    fn check_validation_layer_support(entry: &ash::Entry) -> bool {
-        let layer_properties = entry
-            .enumerate_instance_layer_properties()
-            .expect("Unable to enumerate Vulkan layer properties.");
-
-        if layer_properties.len() < 1 {
-            eprintln!("No layers available");
-            return false;
-        }
-
-        for required_layer_name in VALIDATION_LAYERS.iter() {
-            let mut was_found = false;
-
-            for layer_property in layer_properties.iter() {
-                let test_layer_name = vk_to_str(&layer_property.layer_name);
-                if (*required_layer_name) == test_layer_name {
-                    was_found = true;
-                    break;
-                }
-            }
-
-            if !was_found {
-                return false;
-            }
-        }
-
-        true
-    }
-
-    /// .
-    ///
-    /// # Panics
-    ///
-    /// Panics if .
     fn setup_debug_utils(
         entry: &ash::Entry,
         instance: &ash::Instance,
-    ) -> (ash::extensions::ext::DebugUtils, vk::DebugUtilsMessengerEXT) {
-        let debug_utils_loader = ash::extensions::ext::DebugUtils::new(entry, instance);
+    ) -> (ash::ext::debug_utils::Instance, vk::DebugUtilsMessengerEXT) {
+        let debug_utils_loader = ash::ext::debug_utils::Instance::new(entry, instance);
 
         if cfg!(feature = "validation") {
             (debug_utils_loader, ash::vk::DebugUtilsMessengerEXT::null())
         } else {
-            let messenger_ci = populate_debug_messenger_create_info();
+            let debug_info = vk::DebugUtilsMessengerCreateInfoEXT::default()
+                .message_severity(
+                    vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::INFO,
+                    // | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE,
+                )
+                .message_type(
+                    vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                        | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                        | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
+                )
+                .pfn_user_callback(Some(vulkan_debug_callback));
 
-            let utils_messenger = unsafe {
+            let debug_callback = unsafe {
                 debug_utils_loader
-                    .create_debug_utils_messenger(&messenger_ci, None)
+                    .create_debug_utils_messenger(&debug_info, None)
                     .expect("Debug Utils Callback")
             };
 
-            (debug_utils_loader, utils_messenger)
+            (debug_utils_loader, debug_callback)
         }
     }
 
     /// Create the app info struct required by Vulkan initialization.
-    fn init_app_info(name: &str) -> vk::ApplicationInfo {
-        let app_name_c = CString::new(name).unwrap();
-        let engine_name_c = CString::new("Scribble Vulkan Engine").unwrap();
-
-        vk::ApplicationInfo {
-            s_type: vk::StructureType::APPLICATION_INFO,
-            p_next: ptr::null(),
-            p_application_name: app_name_c.as_ptr(),
-            application_version: 0u32,
-            p_engine_name: engine_name_c.as_ptr(),
-            engine_version: 0u32,
-            api_version: vk::API_VERSION_1_3,
-        }
-    }
-
-    /// Create the InstanceCreateInfo struct required by Vulkan initialization.
-    fn init_create_info(app_info: vk::ApplicationInfo) -> vk::InstanceCreateInfo {
-        let extension_names = required_extension_names();
-
-        let debug_utils_create_info = populate_debug_messenger_create_info();
-
-        let requred_validation_layer_raw_names: Vec<CString> = VALIDATION_LAYERS
-            .iter()
-            .map(|layer_name| CString::new(*layer_name).unwrap())
-            .collect();
-        let enable_layer_names: Vec<*const i8> = requred_validation_layer_raw_names
-            .iter()
-            .map(|layer_name| layer_name.as_ptr())
-            .collect();
-
-        let p_next = if cfg!(feature = "validation") {
-            &debug_utils_create_info as *const vk::DebugUtilsMessengerCreateInfoEXT as *const c_void
-        } else {
-            ptr::null()
-        };
-
-        let pp_enabled_layer_names = if cfg!(feature = "validation") {
-            enable_layer_names.as_ptr()
-        } else {
-            ptr::null()
-        };
-
-        let enabled_layer_count = if cfg!(feature = "validation") {
-            enable_layer_names.len() as u32
-        } else {
-            0
-        };
-
-        vk::InstanceCreateInfo {
-            s_type: vk::StructureType::INSTANCE_CREATE_INFO,
-            p_next,
-            flags: vk::InstanceCreateFlags::empty(),
-            p_application_info: &app_info,
-            enabled_layer_count,
-            pp_enabled_layer_names,
-            enabled_extension_count: extension_names.len() as u32,
-            pp_enabled_extension_names: extension_names.as_ptr(),
-        }
+    fn init_app_info<'a>(
+        app_name: &'a CString,
+        engine_name: &'a CString,
+    ) -> vk::ApplicationInfo<'a> {
+        vk::ApplicationInfo::default()
+            .application_name(app_name.as_c_str())
+            .application_version(0)
+            .engine_name(engine_name.as_c_str())
+            .api_version(vk::API_VERSION_1_3)
     }
 }
 
@@ -252,19 +106,38 @@ impl Debug for VulkanRenderer {
 }
 
 impl Renderer for VulkanRenderer {
-    fn create(name: &str) -> Self {
+    fn create(name: &str, display_handle: &RawDisplayHandle) -> Self {
         // Load the Vulkan API (dynamically) -- this needs to be kept alive while Vulkan is in use
         let entry = unsafe { ash::Entry::load().unwrap() };
 
-        // If we need validation layers and can't load them, screw it, give up I guess... (for now)
-        // TODO: Maybe don't panic...?
-        if VALIDATION_ON && !VulkanRenderer::check_validation_layer_support(&entry) {
-            panic!("Validation layers required but were not found.");
-        }
-
         // Initialize info structs used to create the instance
-        let app_info = VulkanRenderer::init_app_info(name);
-        let create_info = VulkanRenderer::init_create_info(app_info);
+        let app_name = CString::new(name).unwrap();
+        let engine_name = CString::new("Scribble Vulkan Engine").unwrap();
+
+        let app_info = VulkanRenderer::init_app_info(&app_name, &engine_name);
+
+        // layer names
+        let layer_names = unsafe {
+            [ffi::CStr::from_bytes_with_nul_unchecked(
+                b"VK_LAYER_KHRONOS_validation\0",
+            )]
+        };
+        let layers_names_raw: Vec<*const c_char> = layer_names
+            .iter()
+            .map(|raw_name| raw_name.as_ptr())
+            .collect();
+
+        // extension_names
+        let mut extension_names = ash_window::enumerate_required_extensions(display_handle.clone())
+            .unwrap()
+            .to_vec();
+        extension_names.push(debug_utils::NAME.as_ptr());
+
+        let create_info = vk::InstanceCreateInfo::default()
+            .application_info(&app_info)
+            .enabled_layer_names(&layers_names_raw)
+            .enabled_extension_names(&extension_names)
+            .flags(vk::InstanceCreateFlags::empty());
 
         // Create the Vulkan insance we're going to use
         let instance = unsafe {
