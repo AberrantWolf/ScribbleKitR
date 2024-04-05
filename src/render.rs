@@ -1,10 +1,23 @@
+use thiserror::Error;
 use winit::raw_window_handle::RawDisplayHandle;
 
 pub mod vulkan;
 
+#[derive(Error, Debug)]
+pub enum RendererError {
+    #[error("Failed to initialize renderer")]
+    InitializationFailed(anyhow::Error),
+    #[error("Failed to enumerate devices")]
+    EnumerateDevicesFailed(anyhow::Error),
+    #[error("Failed to initialize debug")]
+    DebugSetupFailed(anyhow::Error),
+}
+
+pub type RendererResult<T> = Result<T, RendererError>;
+
 pub trait Renderer {
     /// Create an instance of the renderer using the given name.
-    fn create(name: &str, display_handle: &RawDisplayHandle) -> Self
+    fn create(name: &str, display_handle: &RawDisplayHandle) -> RendererResult<Self>
     where
         Self: Sized;
 
@@ -31,8 +44,8 @@ impl VoidRenderer {
 }
 
 impl Renderer for VoidRenderer {
-    fn create(_name: &str, _: &RawDisplayHandle) -> Self {
-        VoidRenderer {}
+    fn create(_name: &str, _: &RawDisplayHandle) -> RendererResult<Self> {
+        Ok(VoidRenderer {})
     }
 
     // TODO -- for debug purposes, mostly

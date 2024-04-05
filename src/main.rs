@@ -10,7 +10,7 @@ fn main() -> anyhow::Result<()> {
     let renderer = Box::new(vulkan::VulkanRenderer::create(
         "ScribbleKit",
         &app.get_display_handle().unwrap(),
-    ));
+    )?);
     app.set_renderer(renderer);
 
     Ok(app.run()?)

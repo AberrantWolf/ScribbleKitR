@@ -7,7 +7,7 @@ use ash::ext::debug_utils;
 use ash::vk;
 use winit::raw_window_handle::RawDisplayHandle;
 
-use crate::render::Renderer;
+use crate::render::{Renderer, RendererError, RendererResult};
 
 // Borrowed from https://github.com/unknownue/vulkan-tutorial-rust/blob/master/src/tutorials/02_validation_layers.rs
 unsafe extern "system" fn vulkan_debug_callback(
@@ -43,6 +43,7 @@ pub struct VulkanRenderer {
     instance: ash::Instance,
     debug_utils_loader: ash::ext::debug_utils::Instance,
     debug_messenger: vk::DebugUtilsMessengerEXT,
+    // physical_device: vk::PhysicalDevice,
 }
 
 impl VulkanRenderer {
@@ -54,11 +55,11 @@ impl VulkanRenderer {
     fn setup_debug_utils(
         entry: &ash::Entry,
         instance: &ash::Instance,
-    ) -> (ash::ext::debug_utils::Instance, vk::DebugUtilsMessengerEXT) {
+    ) -> RendererResult<(ash::ext::debug_utils::Instance, vk::DebugUtilsMessengerEXT)> {
         let debug_utils_loader = ash::ext::debug_utils::Instance::new(entry, instance);
 
         if cfg!(feature = "validation") {
-            (debug_utils_loader, ash::vk::DebugUtilsMessengerEXT::null())
+            Ok((debug_utils_loader, ash::vk::DebugUtilsMessengerEXT::null()))
         } else {
             let debug_info = vk::DebugUtilsMessengerCreateInfoEXT::default()
                 .message_severity(
@@ -75,12 +76,13 @@ impl VulkanRenderer {
                 .pfn_user_callback(Some(vulkan_debug_callback));
 
             let debug_callback = unsafe {
-                debug_utils_loader
-                    .create_debug_utils_messenger(&debug_info, None)
-                    .expect("Debug Utils Callback")
+                match debug_utils_loader.create_debug_utils_messenger(&debug_info, None) {
+                    Ok(t) => t,
+                    Err(e) => return Err(RendererError::DebugSetupFailed(e.into())),
+                }
             };
 
-            (debug_utils_loader, debug_callback)
+            Ok((debug_utils_loader, debug_callback))
         }
     }
 
@@ -95,6 +97,15 @@ impl VulkanRenderer {
             .engine_name(engine_name.as_c_str())
             .api_version(vk::API_VERSION_1_3)
     }
+
+    // fn select_physical_device(instance: &ash::Instance) -> RendererResult<vk::PhysicalDevice> {
+    //     let devices = match unsafe { instance.enumerate_physical_devices() } {
+    //         Ok(ds) => ds,
+    //         Err(e) => return Err(RendererError::EnumerateDevicesFailed(e.into())),
+    //     };
+
+    //     Ok(())
+    // }
 }
 
 impl Debug for VulkanRenderer {
@@ -106,7 +117,7 @@ impl Debug for VulkanRenderer {
 }
 
 impl Renderer for VulkanRenderer {
-    fn create(name: &str, display_handle: &RawDisplayHandle) -> Self {
+    fn create(name: &str, display_handle: &RawDisplayHandle) -> RendererResult<Self> {
         // Load the Vulkan API (dynamically) -- this needs to be kept alive while Vulkan is in use
         let entry = unsafe { ash::Entry::load().unwrap() };
 
@@ -148,15 +159,15 @@ impl Renderer for VulkanRenderer {
 
         // Load the debug utils from Vulkan -- these need to be kept alive while Vulkan is in use
         let (debug_utils_loader, debug_messenger) =
-            VulkanRenderer::setup_debug_utils(&entry, &instance);
+            VulkanRenderer::setup_debug_utils(&entry, &instance)?;
 
         // Here we go, constructing the usable(?) renderer struct
-        VulkanRenderer {
+        Ok(VulkanRenderer {
             _api_entry: entry,
             instance,
             debug_utils_loader,
             debug_messenger,
-        }
+        })
     }
 
     fn render(&self) {
